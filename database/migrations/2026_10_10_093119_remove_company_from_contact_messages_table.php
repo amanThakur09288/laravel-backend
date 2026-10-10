@@ -10,19 +10,16 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-  {
-    Schema::table('contact_messages', function (Blueprint $table) {
-        $table->dropColumn('company');
-    });
+{
+    if (Schema::hasColumn('contact_messages', 'company')) {
+        Schema::table('contact_messages', function (Blueprint $table) {
+            $table->dropColumn('company');
+        });
+    }
 }
 
-    /**
-     * Reverse the migrations.
-     */
-    public function down(): void
-   {
-    Schema::table('contact_messages', function (Blueprint $table) {
-        $table->string('company', 150)->nullable()->after('email');
-    });
+public function down(): void
+{
+    //
 }
 };

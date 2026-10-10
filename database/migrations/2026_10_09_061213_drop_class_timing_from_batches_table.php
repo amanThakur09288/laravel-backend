@@ -11,15 +11,15 @@ return new class extends Migration
      */
 public function up(): void
 {
-    Schema::table('batches', function (Blueprint $table) {
-        $table->dropColumn('class_timing');
-    });
+    if (Schema::hasColumn('batches', 'class_timing')) {
+        Schema::table('batches', function (Blueprint $table) {
+            $table->dropColumn('class_timing');
+        });
+    }
 }
 
 public function down(): void
 {
-    Schema::table('batches', function (Blueprint $table) {
-        $table->string('class_timing')->nullable();
-    });
+    //
 }
 };
