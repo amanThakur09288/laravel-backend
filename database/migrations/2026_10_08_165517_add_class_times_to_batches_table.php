@@ -6,18 +6,20 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-  public function up(): void
+public function up(): void
 {
     Schema::table('batches', function (Blueprint $table) {
-        $table->time('class_start_time')->nullable();
-        $table->time('class_end_time')->nullable();
+        if (! Schema::hasColumn('batches', 'class_start_time')) {
+            $table->time('class_start_time')->nullable();
+        }
+
+        if (! Schema::hasColumn('batches', 'class_end_time')) {
+            $table->time('class_end_time')->nullable();
+        }
     });
 }
 
 public function down(): void
 {
-    Schema::table('batches', function (Blueprint $table) {
-        $table->dropColumn(['class_start_time', 'class_end_time']);
-    });
 }
 };
