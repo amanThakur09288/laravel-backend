@@ -114,5 +114,5 @@ return [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', env('APP_NAME', 'Laravel')),
     ],
-
+'contact_admin' => env('CONTACT_ADMIN_EMAIL', 'networx256@gmail.com'),
 ];
