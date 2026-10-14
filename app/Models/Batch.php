@@ -3,19 +3,23 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Batch extends Model
 {
     protected $fillable = [
+        'course_id',
+
         'slug',
         'batch_name',
-        'course_name',
+
         'short_description',
         'course_description',
         'batch_overview',
 
         'start_date',
         'end_date',
+
         'duration_text',
         'class_days',
         'class_start_time',
@@ -27,6 +31,7 @@ class Batch extends Model
 
         'total_seats',
         'available_seats',
+
         'status',
 
         'fee',
@@ -50,22 +55,33 @@ class Batch extends Model
         'doubt_support',
     ];
 
-    protected function casts(): array
-    {
-        return [
-            // 'start_date' => 'date',
-            // 'end_date' => 'date',
+    protected $casts = [
+        'start_date' => 'date',
+        'end_date' => 'date',
 
-            'fee' => 'decimal:2',
-            'discounted_fee' => 'decimal:2',
-            'start_date' => 'date:Y-m-d',
-            'end_date'   => 'date:Y-m-d',
-            'learning_outcomes' => 'array',
-            'curriculum' => 'array',
-            'prerequisites' => 'array',
-            'who_should_join' => 'array',
-            'faqs' => 'array',
-            'payment_info' => 'array',
-        ];
+        'learning_outcomes' => 'array',
+        'curriculum' => 'array',
+        'prerequisites' => 'array',
+        'who_should_join' => 'array',
+        'faqs' => 'array',
+        'payment_info' => 'array',
+
+        'total_classes' => 'integer',
+        'total_seats' => 'integer',
+        'available_seats' => 'integer',
+
+        'fee' => 'decimal:2',
+        'discounted_fee' => 'decimal:2',
+    ];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Batch belongs to Course
+    |--------------------------------------------------------------------------
+    */
+
+    public function course(): BelongsTo
+    {
+        return $this->belongsTo(Course::class);
     }
 }

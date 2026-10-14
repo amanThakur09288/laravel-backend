@@ -11,9 +11,87 @@ use Illuminate\Support\Str;
 
 class BatchController extends Controller
 {
+    /* =====================================================
+       ADMIN (find batch by id)
+    ===================================================== */
+
     public function index(): JsonResponse
     {
-        $batches = Batch::query()
+        $batches = Batch::with('course')->latest()->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $batches,
+        ]);
+    }
+
+    public function store(StoreBatchRequest $request): JsonResponse
+    {
+        $data = $request->validated();
+
+        // react-batch-01 style slug, always unique
+        $data['slug'] = $this->generateUniqueSlug($data['batch_name']);
+
+        $batch = Batch::create($data)->load('course');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Batch created successfully.',
+            'data' => $batch,
+        ], 201);
+    }
+
+    public function show(string $id): JsonResponse
+    {
+        $batch = Batch::with('course')->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $batch,
+        ]);
+    }
+
+    public function update(UpdateBatchRequest $request, string $id): JsonResponse
+    {
+        $batch = Batch::findOrFail($id);
+
+        $data = $request->validated();
+
+        // Only change the slug when the batch name changes
+        if ($data['batch_name'] !== $batch->batch_name) {
+            $data['slug'] = $this->generateUniqueSlug(
+                $data['batch_name'],
+                $batch->id
+            );
+        }
+
+        $batch->update($data);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Batch updated successfully.',
+            'data' => $batch->load('course'),
+        ]);
+    }
+
+    public function destroy(string $id): JsonResponse
+    {
+        Batch::findOrFail($id)->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Batch deleted successfully.',
+        ]);
+    }
+
+    /* =====================================================
+       PUBLIC (website, find batch by slug)
+    ===================================================== */
+
+    public function publicIndex(): JsonResponse
+    {
+        $batches = Batch::with('course')
+            ->whereDate('end_date', '>=', now())
             ->orderBy('start_date')
             ->get();
 
@@ -23,114 +101,25 @@ class BatchController extends Controller
         ]);
     }
 
-    public function publicIndex(): JsonResponse
-{
-    $batches = Batch::query()
-        ->whereDate('end_date', '>=', now())
-        ->orderBy('start_date')
-        ->get();
+    public function publicShow(string $slug): JsonResponse
+    {
+        $batch = Batch::with('course')->where('slug', $slug)->firstOrFail();
 
-    return response()->json(['success' => true, 'data' => $batches]);
-}
-
-public function publicShow(string $slug): JsonResponse
-{
-    $batch = Batch::where('slug', $slug)->firstOrFail();
-
-    return response()->json(['success' => true, 'data' => $batch]);
-}
-
-    public function store(
-        StoreBatchRequest $request
-    ): JsonResponse {
-        $data = $request->validated();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Generate slug automatically
-        |--------------------------------------------------------------------------
-        */
-
-        $data['slug'] =
-            $this->generateUniqueSlug(
-                $data['batch_name']
-            );
-
-        $batch = Batch::create($data);
-
-        return response()->json([
-            'success' => true,
-            'message' =>
-                'Batch created successfully.',
-            'data' => $batch,
-        ], 201);
-    }
-
-    public function show(
-        Batch $batch
-    ): JsonResponse {
         return response()->json([
             'success' => true,
             'data' => $batch,
         ]);
     }
 
-    public function update(
-        UpdateBatchRequest $request,
-        Batch $batch
-    ): JsonResponse {
-        $data = $request->validated();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Regenerate slug when Batch Name changes
-        |--------------------------------------------------------------------------
-        */
-
-        if (
-            $batch->batch_name !==
-            $data['batch_name']
-        ) {
-            $data['slug'] =
-                $this->generateUniqueSlug(
-                    $data['batch_name'],
-                    $batch->id
-                );
-        }
-
-        $batch->update($data);
-
-        return response()->json([
-            'success' => true,
-            'message' =>
-                'Batch updated successfully.',
-            'data' => $batch->fresh(),
-        ]);
-    }
-
-    public function destroy(
-        Batch $batch
-    ): JsonResponse {
-        $batch->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' =>
-                'Batch deleted successfully.',
-        ]);
-    }
+    /* =====================================================
+       HELPERS
+    ===================================================== */
 
     private function generateUniqueSlug(
         string $batchName,
         ?int $ignoreId = null
     ): string {
         $baseSlug = Str::slug($batchName);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Safety fallback
-        |--------------------------------------------------------------------------
-        */
 
         if ($baseSlug === '') {
             $baseSlug = 'batch';
@@ -140,26 +129,11 @@ public function publicShow(string $slug): JsonResponse
         $counter = 2;
 
         while (
-            Batch::query()
-                ->where('slug', $slug)
-                ->when(
-                    $ignoreId,
-                    function ($query) use ($ignoreId) {
-                        $query->where(
-                            'id',
-                            '!=',
-                            $ignoreId
-                        );
-                    }
-                )
+            Batch::where('slug', $slug)
+                ->when($ignoreId, fn ($query) => $query->where('id', '!=', $ignoreId))
                 ->exists()
         ) {
-            $slug =
-                $baseSlug .
-                '-' .
-                $counter;
-
-            $counter++;
+            $slug = $baseSlug . '-' . $counter++;
         }
 
         return $slug;

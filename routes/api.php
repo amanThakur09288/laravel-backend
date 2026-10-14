@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\HelloController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\BatchController;
 use App\Http\Controllers\Api\ContactMessageController;
+use App\Http\Controllers\Api\CourseController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -34,3 +35,7 @@ Route::post('/contact', [ContactMessageController::class, 'store'])
 // Admin (no login yet, same as your batches and products routes)
 Route::apiResource('contact-messages', ContactMessageController::class)
     ->only(['index', 'show','destroy']);
+
+Route::apiResource('courses', CourseController::class);
+Route::get('/public/courses', [CourseController::class, 'publicIndex']);
+Route::get('/public/courses/{slug}', [CourseController::class, 'publicShow']);

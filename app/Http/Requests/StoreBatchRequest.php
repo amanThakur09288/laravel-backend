@@ -22,8 +22,8 @@ class StoreBatchRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'course_id'          => ['required', 'integer', 'exists:courses,id'],
             'batch_name'         => ['required', 'string', 'max:255'],
-            'course_name'        => ['required', 'string', 'max:255'],
             'short_description'  => ['required', 'string', 'max:1000'],
             'course_description' => ['nullable', 'string', 'max:10000'],
             'batch_overview'     => ['nullable', 'string', 'max:10000'],
@@ -85,6 +85,8 @@ class StoreBatchRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'course_id.required'           => 'Please select a course.',
+            'course_id.exists'             => 'The selected course does not exist.',
             'end_date.after_or_equal'      => 'End date must be on or after the start date.',
             'class_start_time.date_format' => 'Class start time must be a valid time (HH:MM).',
             'class_end_time.date_format'   => 'Class end time must be a valid time (HH:MM).',
@@ -101,8 +103,8 @@ class StoreBatchRequest extends FormRequest
     public function attributes(): array
     {
         return [
+            'course_id'         => 'course',
             'batch_name'        => 'batch name',
-            'course_name'       => 'course name',
             'short_description' => 'short description',
             'duration_text'     => 'duration',
             'class_days'        => 'class days',
