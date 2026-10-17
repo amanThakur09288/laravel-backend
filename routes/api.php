@@ -1,41 +1,65 @@
 <?php
 
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
 use App\Http\Controllers\Api\HelloController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\BatchController;
-use App\Http\Controllers\Api\ContactMessageController;
 use App\Http\Controllers\Api\CourseController;
+use App\Http\Controllers\Api\ContactMessageController;
+use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ServiceController;
 
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
+/*
+|--------------------------------------------------------------------------
+| Authentication
+|--------------------------------------------------------------------------
+*/
+
+Route::post('/login', [AuthController::class, 'login']);
+
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/user', [AuthController::class, 'user']);
+
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| Public APIs
+|--------------------------------------------------------------------------
+*/
 
 Route::get('/hello', [HelloController::class, 'hello']);
 
-// Public routes (used by the client website, find batch by slug)
 Route::get('/public/batches', [BatchController::class, 'publicIndex']);
 Route::get('/public/batches/{slug}', [BatchController::class, 'publicShow']);
 
-// Admin routes (find batch by id)
-Route::apiResource('products', ProductController::class);
-Route::apiResource('batches', BatchController::class);
-
-// Public: max 5 messages per 10 minutes per IP
-Route::post('/contact', [ContactMessageController::class, 'store'])
-    ->middleware('throttle:5,10');
-
-// Admin only (needs login token)
-// Route::middleware('auth:sanctum')->group(function () {
-//     Route::apiResource('contact-messages', ContactMessageController::class)
-//         ->only(['index', 'destroy']);
-// });
-
-// Admin (no login yet, same as your batches and products routes)
-Route::apiResource('contact-messages', ContactMessageController::class)
-    ->only(['index', 'show','destroy']);
-
-Route::apiResource('courses', CourseController::class);
 Route::get('/public/courses', [CourseController::class, 'publicIndex']);
 Route::get('/public/courses/{slug}', [CourseController::class, 'publicShow']);
+
+Route::get('/public/services', [ServiceController::class, 'publicIndex']);
+Route::get('/public/services/{slug}', [ServiceController::class, 'publicShow']);
+
+Route::post('/contact', [ContactMessageController::class, 'store']);
+
+
+/*
+|--------------------------------------------------------------------------
+| Admin APIs
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    Route::apiResource('products', ProductController::class);
+    Route::apiResource('batches', BatchController::class);
+    Route::apiResource('courses', CourseController::class);
+    Route::apiResource('services', ServiceController::class);
+
+    Route::apiResource(
+        'contact-messages',
+        ContactMessageController::class
+    );
+});
