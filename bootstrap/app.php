@@ -15,5 +15,9 @@ return Application::configure(basePath: dirname(__DIR__))
          $middleware->statefulApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // API requests always get a JSON error (for example 401),
+        // never a redirect to a login page that does not exist
+        $exceptions->shouldRenderJsonWhen(
+            fn ($request) => $request->is('api/*') || $request->expectsJson()
+        );
     })->create();

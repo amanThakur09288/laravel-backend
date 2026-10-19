@@ -8,6 +8,7 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    // sanctum/csrf-cookie is needed for the admin cookie login
     'paths' => [
         'api/*',
         'sanctum/csrf-cookie',
@@ -35,6 +36,7 @@ return [
 
     'max_age' => 0,
 
+    // Must be true: the browser sends the login cookies with each request
     'supports_credentials' => true,
 
 ];
