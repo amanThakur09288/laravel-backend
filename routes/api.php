@@ -9,7 +9,9 @@ use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\HelloController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ServiceController;
-
+use App\Http\Controllers\Api\QuizController;
+use App\Http\Controllers\Api\QuestionController;
+use App\Http\Controllers\Api\QuizQuestionController;
 /*
 |--------------------------------------------------------------------------
 | PUBLIC routes (anyone can use them)
@@ -53,6 +55,35 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('batches', BatchController::class);
     Route::apiResource('courses', CourseController::class);
     Route::apiResource('services', ServiceController::class);
+    Route::apiResource('admin/quizzes', QuizController::class);
+
+    /*
+|--------------------------------------------------------------------------
+| Quiz Questions
+|--------------------------------------------------------------------------
+*/
+
+Route::apiResource('admin/questions', QuestionController::class);
+
+Route::post(
+    'admin/quizzes/{quiz}/questions',
+    [QuizQuestionController::class, 'store']
+);
+
+Route::put(
+    'admin/quizzes/{quiz}/questions/order',
+    [QuizQuestionController::class, 'updateOrder']
+);
+
+Route::put(
+    'admin/quizzes/{quiz}/questions/{question}',
+    [QuizQuestionController::class, 'update']
+);
+
+Route::delete(
+    'admin/quizzes/{quiz}/questions/{question}',
+    [QuizQuestionController::class, 'destroy']
+);
 
     // The admin can only list, view and delete messages
     // (new messages come from the public /contact route above)
