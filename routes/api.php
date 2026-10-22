@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\HelloController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ServiceController;
+use App\Http\Controllers\Api\QuizController;
+use App\Http\Controllers\Api\QuizAttemptController;
 
 /*
 |--------------------------------------------------------------------------
@@ -39,6 +41,35 @@ Route::get('/public/services/{slug}', [ServiceController::class, 'publicShow'])
 Route::post('/contact', [ContactMessageController::class, 'store'])
     ->middleware('throttle:5,10');
 
+Route::get('/public/quizzes', [QuizController::class, 'publicIndex']);
+Route::get('/public/quizzes/{id}', [QuizController::class, 'publicShow'])
+    ->whereNumber('id');
+
+    Route::post('/quizzes/{quiz}/attempts', [
+    QuizAttemptController::class,
+    'store',
+]);
+
+Route::get('/attempts/{attempt}', [
+    QuizAttemptController::class,
+    'show',
+]);
+
+Route::put('/attempts/{attempt}/answers', [
+    QuizAttemptController::class,
+    'saveAnswer',
+]);
+
+Route::post('/attempts/{attempt}/submit', [
+    QuizAttemptController::class,
+    'submit',
+]);
+
+Route::get('/attempts/{attempt}/result', [
+    QuizAttemptController::class,
+    'result',
+]);
+
 /*
 |--------------------------------------------------------------------------
 | ADMIN routes (the admin must be logged in)
@@ -53,6 +84,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('batches', BatchController::class);
     Route::apiResource('courses', CourseController::class);
     Route::apiResource('services', ServiceController::class);
+
+    Route::apiResource('quizzes', QuizController::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Quiz Attempts
+    |--------------------------------------------------------------------------
+    | These are for authenticated users/students.
+    |
+    */
+
+    // Route::post('/quizzes/{quiz}/attempts',[QuizAttemptController::class,'store']);
+    // Route::get('/attempts/{attempt}',[QuizAttemptController::class,'show']);
+    // Route::put('/attempts/{attempt}/answers',[QuizAttemptController::class,'saveAnswer']);
+    // Route::post('/attempts/{attempt}/submit',[QuizAttemptController::class,'submit']);
+    // Route::get('/attempts/{attempt}/result',[QuizAttemptController::class,'result']);
 
     // The admin can only list, view and delete messages
     // (new messages come from the public /contact route above)
