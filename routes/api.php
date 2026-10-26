@@ -11,7 +11,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\QuizController;
 use App\Http\Controllers\Api\QuizAttemptController;
-
+use App\Http\Controllers\Api\QuizResultController;
 /*
 |--------------------------------------------------------------------------
 | PUBLIC routes (anyone can use them)
@@ -45,30 +45,11 @@ Route::get('/public/quizzes', [QuizController::class, 'publicIndex']);
 Route::get('/public/quizzes/{id}', [QuizController::class, 'publicShow'])
     ->whereNumber('id');
 
-    Route::post('/quizzes/{quiz}/attempts', [
-    QuizAttemptController::class,
-    'store',
-]);
-
-Route::get('/attempts/{attempt}', [
-    QuizAttemptController::class,
-    'show',
-]);
-
-Route::put('/attempts/{attempt}/answers', [
-    QuizAttemptController::class,
-    'saveAnswer',
-]);
-
-Route::post('/attempts/{attempt}/submit', [
-    QuizAttemptController::class,
-    'submit',
-]);
-
-Route::get('/attempts/{attempt}/result', [
-    QuizAttemptController::class,
-    'result',
-]);
+Route::post('/quizzes/{quiz}/attempts', [QuizAttemptController::class,'store',]);
+Route::get('/attempts/{attempt}', [QuizAttemptController::class,'show',]);
+Route::put('/attempts/{attempt}/answers', [QuizAttemptController::class,'saveAnswer',]);
+Route::post('/attempts/{attempt}/submit', [QuizAttemptController::class,'submit',]);
+Route::get('/attempts/{attempt}/result', [QuizAttemptController::class,'result',]);
 
 /*
 |--------------------------------------------------------------------------
@@ -86,7 +67,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('services', ServiceController::class);
 
     Route::apiResource('quizzes', QuizController::class);
-
+    Route::get('/quiz-results', [QuizResultController::class, 'index',        ]);
+    Route::get('/quiz-results/{attempt}', [QuizResultController::class,'show',]);
     /*
     |--------------------------------------------------------------------------
     | Quiz Attempts

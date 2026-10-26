@@ -107,6 +107,13 @@ class StoreQuizRequest extends FormRequest
                 'max:5000',
             ],
 
+            'questions.*.question_image' => [
+                 'nullable',
+                 'image',
+                 'mimes:jpeg,jpg,png,webp',
+                 'max:5120',
+             ],
+
             'questions.*.type' => [
                 'required',
                 'in:single_select,multi_select',

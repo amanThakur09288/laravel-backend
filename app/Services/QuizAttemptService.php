@@ -582,6 +582,9 @@ class QuizAttemptService
                     'question_text' =>
                         $question->question_text,
 
+                    'question_image' =>
+                       $question->question_image,
+                       
                     'type' =>
                         $question->type,
 
@@ -907,6 +910,9 @@ class QuizAttemptService
 
                 'question_text' =>
                     $question->question_text,
+
+                     'question_image' =>
+                         $question->question_image,
 
                 'type' =>
                     $question->type,

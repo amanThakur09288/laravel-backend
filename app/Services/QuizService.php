@@ -5,7 +5,9 @@ namespace App\Services;
 use App\Models\Quiz;
 use App\Models\QuizQuestion;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -187,6 +189,24 @@ class QuizService
 
             /*
             |--------------------------------------------------------------------------
+            | Delete old question images
+            |--------------------------------------------------------------------------
+            */
+
+            $oldImages = $quiz->questions()
+                ->whereNotNull('question_image')
+                ->pluck('question_image');
+
+            foreach ($oldImages as $oldImage) {
+                if ($oldImage) {
+                    Storage::disk('public')->delete(
+                        $oldImage
+                    );
+                }
+            }
+
+            /*
+            |--------------------------------------------------------------------------
             | Replace questions atomically
             |--------------------------------------------------------------------------
             */
@@ -226,6 +246,24 @@ class QuizService
                 ]);
             }
 
+            /*
+            |--------------------------------------------------------------------------
+            | Delete question images
+            |--------------------------------------------------------------------------
+            */
+
+            $questionImages = $quiz->questions()
+                ->whereNotNull('question_image')
+                ->pluck('question_image');
+
+            foreach ($questionImages as $image) {
+                if ($image) {
+                    Storage::disk('public')->delete(
+                        $image
+                    );
+                }
+            }
+
             $quiz->delete();
         }, 3);
     }
@@ -243,9 +281,31 @@ class QuizService
         foreach (
             $questions as $questionIndex => $questionData
         ) {
+            /*
+            |--------------------------------------------------------------------------
+            | Upload question image
+            |--------------------------------------------------------------------------
+            */
+
+            $questionImage = null;
+
+            if (
+                isset($questionData['question_image']) &&
+                $questionData['question_image'] instanceof UploadedFile
+            ) {
+                $questionImage = $questionData['question_image']
+                    ->store(
+                        'quiz/questions',
+                        'public'
+                    );
+            }
+
             $question = $quiz->questions()->create([
                 'question_text' =>
                     $questionData['question_text'],
+
+                'question_image' =>
+                    $questionImage,
 
                 'type' =>
                     $questionData['type'],
