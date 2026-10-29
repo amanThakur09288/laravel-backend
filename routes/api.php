@@ -12,6 +12,9 @@ use App\Http\Controllers\Api\ServiceController;
 use App\Http\Controllers\Api\QuizController;
 use App\Http\Controllers\Api\QuizAttemptController;
 use App\Http\Controllers\Api\QuizResultController;
+use App\Http\Controllers\Api\CourseSectionController;
+use App\Http\Controllers\Api\CourseLessonController;
+
 /*
 |--------------------------------------------------------------------------
 | PUBLIC routes (anyone can use them)
@@ -32,6 +35,11 @@ Route::get('/public/batches/{slug}', [BatchController::class, 'publicShow'])
 Route::get('/public/courses', [CourseController::class, 'publicIndex']);
 Route::get('/public/courses/{slug}', [CourseController::class, 'publicShow'])
     ->where('slug', '[a-z0-9\-]+');
+
+    Route::get(
+    '/public/courses/{slug}/lessons/{lesson}/video',
+    [CourseController::class, 'streamLessonVideo']
+)->name('public.courses.lessons.video');
 
 Route::get('/public/services', [ServiceController::class, 'publicIndex']);
 Route::get('/public/services/{slug}', [ServiceController::class, 'publicShow'])
@@ -67,8 +75,46 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('services', ServiceController::class);
 
     Route::apiResource('quizzes', QuizController::class);
-    Route::get('/quiz-results', [QuizResultController::class, 'index',        ]);
+    Route::get('/quiz-results', [QuizResultController::class, 'index',]);
     Route::get('/quiz-results/{attempt}', [QuizResultController::class,'show',]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Video Sections
+    |--------------------------------------------------------------------------
+    */
+
+    Route::apiResource(
+        'courses.sections',
+        CourseSectionController::class
+    );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Video Lessons
+    |--------------------------------------------------------------------------
+    */
+
+    Route::apiResource(
+        'sections.lessons',
+        CourseLessonController::class
+    )->only([
+        'index',
+        'show',
+        'destroy',
+    ]);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Secure Video Playback
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('sections/{section}/lessons/{lesson}/video',[CourseLessonController::class, 'video'])->name('admin.sections.lessons.video');
+
+
+    // Route::apiResource('courses.sections',CourseSectionController::class);
+    // Route::apiResource('sections.lessons',CourseLessonController::class);
     /*
     |--------------------------------------------------------------------------
     | Quiz Attempts

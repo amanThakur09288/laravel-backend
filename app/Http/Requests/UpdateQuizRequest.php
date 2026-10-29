@@ -4,15 +4,36 @@ namespace App\Http\Requests;
 
 class UpdateQuizRequest extends StoreQuizRequest
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Quiz updates use the same complete structure as creation.
-    |--------------------------------------------------------------------------
-    |
-    | This keeps the quiz consistent.
-    |
-    | We don't allow partial question updates here.
-    | The service replaces the quiz questions atomically.
-    |
-    */
+    public function rules(): array
+    {
+        return array_merge(
+            parent::rules(),
+            [
+                /*
+                |--------------------------------------------------------------------------
+                | Existing Question ID
+                |--------------------------------------------------------------------------
+                */
+
+                'questions.*.id' => [
+                    'nullable',
+                    'integer',
+                    'exists:quiz_questions,id',
+                ],
+
+
+                /*
+                |--------------------------------------------------------------------------
+                | Existing Option ID
+                |--------------------------------------------------------------------------
+                */
+
+                'questions.*.options.*.id' => [
+                    'nullable',
+                    'integer',
+                    'exists:quiz_options,id',
+                ],
+            ]
+        );
+    }
 }

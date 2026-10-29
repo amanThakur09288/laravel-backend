@@ -107,6 +107,7 @@ class QuizController extends Controller
 {
     $quizzes = Quiz::query()
         ->with('batch.course')
+        ->withCount('questions')
         ->where('status', 'published')
         ->latest()
         ->get([

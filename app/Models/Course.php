@@ -55,4 +55,13 @@ class Course extends Model
     {
         return $this->hasMany(Batch::class);
     }
+
+    /**
+ * Course has many sections.
+ */
+public function sections(): HasMany
+{
+    return $this->hasMany(CourseSection::class)
+        ->orderBy('sort_order');
+}
 }

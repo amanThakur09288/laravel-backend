@@ -6,17 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreCourseRequest;
 use App\Http\Requests\UpdateCourseRequest;
 use App\Models\Course;
+use App\Models\CourseLesson;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CourseController extends Controller
 {
-    /**
-     * Display all courses for admin.
-     */
     public function index(): JsonResponse
     {
-        $courses = Course::latest()->get();
+        $courses = Course::with([
+            'sections.lessons',
+        ])
+            ->latest()
+            ->get();
 
         return response()->json([
             'success' => true,
@@ -24,39 +29,17 @@ class CourseController extends Controller
         ]);
     }
 
-    /**
-     * Store a new course.
-     */
     public function store(StoreCourseRequest $request): JsonResponse
     {
         $validated = $request->validated();
 
-        $validated['learning_outcomes'] =
-            $validated['learning_outcomes'] ?? [];
-
-        $validated['curriculum'] =
-            $validated['curriculum'] ?? [];
-
-        $validated['prerequisites'] =
-            $validated['prerequisites'] ?? [];
-
-        $validated['who_should_join'] =
-            $validated['who_should_join'] ?? [];
-
-        $validated['course_features'] =
-            $validated['course_features'] ?? [];
-
-        $validated['faqs'] =
-            $validated['faqs'] ?? [];
-
-        $validated['status'] =
-            $validated['status'] ?? 'Active';
-
-        /*
-        |--------------------------------------------------------------------------
-        | Generate slug on backend
-        |--------------------------------------------------------------------------
-        */
+        $validated['learning_outcomes'] = $validated['learning_outcomes'] ?? [];
+        $validated['curriculum'] = $validated['curriculum'] ?? [];
+        $validated['prerequisites'] = $validated['prerequisites'] ?? [];
+        $validated['who_should_join'] = $validated['who_should_join'] ?? [];
+        $validated['course_features'] = $validated['course_features'] ?? [];
+        $validated['faqs'] = $validated['faqs'] ?? [];
+        $validated['status'] = $validated['status'] ?? 'Active';
 
         $validated['slug'] = $this->generateUniqueSlug(
             $validated['course_name']
@@ -71,51 +54,30 @@ class CourseController extends Controller
         ], 201);
     }
 
-    /**
-     * Display one course for admin.
-     *
-     * Admin continues using ID.
-     */
     public function show(Course $course): JsonResponse
     {
+        $course->load([
+            'sections.lessons',
+        ]);
+
         return response()->json([
             'success' => true,
             'data' => $course,
         ]);
     }
 
-    /**
-     * Update course.
-     */
     public function update(
         UpdateCourseRequest $request,
         Course $course
     ): JsonResponse {
         $validated = $request->validated();
 
-        $validated['learning_outcomes'] =
-            $validated['learning_outcomes'] ?? [];
-
-        $validated['curriculum'] =
-            $validated['curriculum'] ?? [];
-
-        $validated['prerequisites'] =
-            $validated['prerequisites'] ?? [];
-
-        $validated['who_should_join'] =
-            $validated['who_should_join'] ?? [];
-
-        $validated['course_features'] =
-            $validated['course_features'] ?? [];
-
-        $validated['faqs'] =
-            $validated['faqs'] ?? [];
-
-        /*
-        |--------------------------------------------------------------------------
-        | Regenerate slug only if course name changed
-        |--------------------------------------------------------------------------
-        */
+        $validated['learning_outcomes'] = $validated['learning_outcomes'] ?? [];
+        $validated['curriculum'] = $validated['curriculum'] ?? [];
+        $validated['prerequisites'] = $validated['prerequisites'] ?? [];
+        $validated['who_should_join'] = $validated['who_should_join'] ?? [];
+        $validated['course_features'] = $validated['course_features'] ?? [];
+        $validated['faqs'] = $validated['faqs'] ?? [];
 
         if (
             isset($validated['course_name']) &&
@@ -136,9 +98,6 @@ class CourseController extends Controller
         ]);
     }
 
-    /**
-     * Display public courses.
-     */
     public function publicIndex(): JsonResponse
     {
         $courses = Course::published()
@@ -171,9 +130,6 @@ class CourseController extends Controller
         ]);
     }
 
-    /**
-     * Display one public course using slug.
-     */
     public function publicShow(string $slug): JsonResponse
     {
         $course = Course::published()
@@ -223,9 +179,58 @@ class CourseController extends Controller
                             'discounted_fee',
                             'offer_text',
                         ]),
+
+                'sections' => fn ($query) =>
+                    $query
+                        ->where('status', 'published')
+                        ->with([
+                            'lessons' => fn ($lessonQuery) =>
+                                $lessonQuery
+                                    ->where('status', 'published')
+                                    ->select([
+                                        'id',
+                                        'course_section_id',
+                                        'title',
+                                        'description',
+                                        'type',
+                                        'sort_order',
+                                        'duration_seconds',
+                                        'is_preview',
+                                        'status',
+                                    ]),
+                        ])
+                        ->select([
+                            'id',
+                            'course_id',
+                            'title',
+                            'description',
+                            'sort_order',
+                            'status',
+                        ]),
             ])
             ->where('slug', $slug)
             ->firstOrFail();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Add playback URL without exposing video_path
+        |--------------------------------------------------------------------------
+        */
+
+        $course->sections->each(function ($section) use ($course) {
+            $section->lessons->each(function ($lesson) use ($course) {
+                $lesson->setAttribute(
+                    'video_url',
+                    route(
+                        'public.courses.lessons.video',
+                        [
+                            'slug' => $course->slug,
+                            'lesson' => $lesson->id,
+                        ]
+                    )
+                );
+            });
+        });
 
         return response()->json([
             'success' => true,
@@ -233,9 +238,112 @@ class CourseController extends Controller
         ]);
     }
 
-    /**
-     * Delete course.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | Secure Video Playback
+    |--------------------------------------------------------------------------
+    */
+
+    public function streamLessonVideo(
+        string $slug,
+        CourseLesson $lesson
+    ): BinaryFileResponse|Response {
+        $course = Course::published()
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Make sure the lesson actually belongs to this course
+        |--------------------------------------------------------------------------
+        */
+
+        $section = $course->sections()
+            ->whereKey($lesson->course_section_id)
+            ->where('status', 'published')
+            ->firstOrFail();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Make sure lesson belongs to the selected published section
+        |--------------------------------------------------------------------------
+        */
+
+        abort_unless(
+            $lesson->status === 'published',
+            404
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Non-preview videos require authentication
+        |--------------------------------------------------------------------------
+        |
+        | We currently do not have an enrollment/access table in the project.
+        | Therefore:
+        |
+        | - Preview video  -> public
+        | - Normal video   -> authenticated user required
+        |
+        | Once your enrollment system exists, this is where we will check
+        | whether the authenticated user is enrolled in this course/batch.
+        |
+        */
+
+        if (!$lesson->is_preview && !request()->user()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Authentication required to watch this video.',
+            ], 401);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Make sure a video actually exists
+        |--------------------------------------------------------------------------
+        */
+
+        if (!$lesson->video_path) {
+            abort(404);
+        }
+
+        $disk = Storage::disk('local');
+
+        if (!$disk->exists($lesson->video_path)) {
+            abort(404);
+        }
+
+        $absolutePath = $disk->path($lesson->video_path);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Determine MIME type
+        |--------------------------------------------------------------------------
+        */
+
+        $mimeType = $disk->mimeType($lesson->video_path)
+            ?: 'video/mp4';
+
+        /*
+        |--------------------------------------------------------------------------
+        | Stream inline
+        |--------------------------------------------------------------------------
+        |
+        | BinaryFileResponse supports Range requests, which is important for
+        | browser video seeking/resuming.
+        |
+        */
+
+        return response()
+            ->file($absolutePath, [
+                'Content-Type' => $mimeType,
+                'Content-Disposition' => 'inline',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
+                'Pragma' => 'no-cache',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+    }
+
     public function destroy(Course $course): JsonResponse
     {
         $course->delete();
@@ -246,9 +354,6 @@ class CourseController extends Controller
         ]);
     }
 
-    /**
-     * Generate a unique course slug.
-     */
     private function generateUniqueSlug(
         string $courseName,
         ?int $ignoreId = null
