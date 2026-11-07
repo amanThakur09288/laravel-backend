@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Course extends Model
@@ -51,17 +52,28 @@ class Course extends Model
         );
     }
 
+    /**
+     * Course belongs to the admin who owns it.
+     */
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    /**
+     * Course has many batches.
+     */
     public function batches(): HasMany
     {
         return $this->hasMany(Batch::class);
     }
 
     /**
- * Course has many sections.
- */
-public function sections(): HasMany
-{
-    return $this->hasMany(CourseSection::class)
-        ->orderBy('sort_order');
-}
+     * Course has many sections.
+     */
+    public function sections(): HasMany
+    {
+        return $this->hasMany(CourseSection::class)
+            ->orderBy('sort_order');
+    }
 }

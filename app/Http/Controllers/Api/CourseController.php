@@ -7,6 +7,8 @@ use App\Http\Requests\StoreCourseRequest;
 use App\Http\Requests\UpdateCourseRequest;
 use App\Models\Course;
 use App\Models\CourseLesson;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Storage;
@@ -17,9 +19,8 @@ class CourseController extends Controller
 {
     public function index(): JsonResponse
     {
-        $courses = Course::with([
-            'sections.lessons',
-        ])
+        $courses = $this->visibleCourses(request()->user())
+            ->with(['sections.lessons'])
             ->latest()
             ->get();
 
@@ -45,7 +46,10 @@ class CourseController extends Controller
             $validated['course_name']
         );
 
-        $course = Course::create($validated);
+        // Ownership is assigned by the server, never by the client.
+        $course = new Course($validated);
+        $course->owner_id = $request->user()->id;
+        $course->save();
 
         return response()->json([
             'success' => true,
@@ -56,6 +60,8 @@ class CourseController extends Controller
 
     public function show(Course $course): JsonResponse
     {
+        $this->authorizeCourseAccess($course, request()->user());
+
         $course->load([
             'sections.lessons',
         ]);
@@ -70,6 +76,8 @@ class CourseController extends Controller
         UpdateCourseRequest $request,
         Course $course
     ): JsonResponse {
+        $this->authorizeCourseAccess($course, $request->user());
+
         $validated = $request->validated();
 
         $validated['learning_outcomes'] = $validated['learning_outcomes'] ?? [];
@@ -89,12 +97,25 @@ class CourseController extends Controller
             );
         }
 
+        // Never accept a changed owner_id from the request.
         $course->update($validated);
 
         return response()->json([
             'success' => true,
             'message' => 'Course updated successfully.',
             'data' => $course->fresh(),
+        ]);
+    }
+
+    public function destroy(Course $course): JsonResponse
+    {
+        $this->authorizeCourseAccess($course, request()->user());
+
+        $course->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Course deleted successfully.',
         ]);
     }
 
@@ -115,11 +136,7 @@ class CourseController extends Controller
             ])
             ->withCount([
                 'batches as upcoming_batches_count' => fn ($query) =>
-                    $query->whereDate(
-                        'end_date',
-                        '>=',
-                        now()
-                    ),
+                    $query->whereDate('end_date', '>=', now()),
             ])
             ->latest()
             ->get();
@@ -153,11 +170,7 @@ class CourseController extends Controller
             ->with([
                 'batches' => fn ($query) =>
                     $query
-                        ->whereDate(
-                            'end_date',
-                            '>=',
-                            now()
-                        )
+                        ->whereDate('end_date', '>=', now())
                         ->orderBy('start_date')
                         ->select([
                             'id',
@@ -211,12 +224,7 @@ class CourseController extends Controller
             ->where('slug', $slug)
             ->firstOrFail();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Add playback URL without exposing video_path
-        |--------------------------------------------------------------------------
-        */
-
+        // Add playback URL without exposing the physical video path.
         $course->sections->each(function ($section) use ($course) {
             $section->lessons->each(function ($lesson) use ($course) {
                 $lesson->setAttribute(
@@ -238,12 +246,6 @@ class CourseController extends Controller
         ]);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Secure Video Playback
-    |--------------------------------------------------------------------------
-    */
-
     public function streamLessonVideo(
         string $slug,
         CourseLesson $lesson
@@ -252,56 +254,39 @@ class CourseController extends Controller
             ->where('slug', $slug)
             ->firstOrFail();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Make sure the lesson actually belongs to this course
-        |--------------------------------------------------------------------------
-        */
-
-        $section = $course->sections()
+        // The lesson must belong to a published section of this course.
+        $course->sections()
             ->whereKey($lesson->course_section_id)
             ->where('status', 'published')
             ->firstOrFail();
 
-        /*
-        |--------------------------------------------------------------------------
-        | Make sure lesson belongs to the selected published section
-        |--------------------------------------------------------------------------
-        */
-
-        abort_unless(
-            $lesson->status === 'published',
-            404
-        );
+        abort_unless($lesson->status === 'published', 404);
 
         /*
-        |--------------------------------------------------------------------------
-        | Non-preview videos require authentication
-        |--------------------------------------------------------------------------
-        |
-        | We currently do not have an enrollment/access table in the project.
-        | Therefore:
-        |
-        | - Preview video  -> public
-        | - Normal video   -> authenticated user required
-        |
-        | Once your enrollment system exists, this is where we will check
-        | whether the authenticated user is enrolled in this course/batch.
-        |
-        */
+         * Preview videos are public.
+         * Private videos require authentication.
+         * Enrollment checks can be added when enrollment is implemented.
+         */
+        if (!$lesson->is_preview) {
+            $viewer = request()->user();
 
-        if (!$lesson->is_preview && !request()->user()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Authentication required to watch this video.',
-            ], 401);
+            if (!$viewer) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Authentication required to watch this video.',
+                ], 401);
+            }
+
+            abort_unless($viewer->is_active, 403);
+
+            // A Teacher cannot use the public playback URL to access
+            // another Teacher's private course videos.
+            if ($viewer->isTeacher()) {
+                $this->authorizeCourseAccess($course, $viewer);
+            } elseif (!$viewer->isAdmin() && !$viewer->isStudent()) {
+                abort(403);
+            }
         }
-
-        /*
-        |--------------------------------------------------------------------------
-        | Make sure a video actually exists
-        |--------------------------------------------------------------------------
-        */
 
         if (!$lesson->video_path) {
             abort(404);
@@ -315,43 +300,40 @@ class CourseController extends Controller
 
         $absolutePath = $disk->path($lesson->video_path);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Determine MIME type
-        |--------------------------------------------------------------------------
-        */
-
         $mimeType = $disk->mimeType($lesson->video_path)
             ?: 'video/mp4';
 
-        /*
-        |--------------------------------------------------------------------------
-        | Stream inline
-        |--------------------------------------------------------------------------
-        |
-        | BinaryFileResponse supports Range requests, which is important for
-        | browser video seeking/resuming.
-        |
-        */
-
-        return response()
-            ->file($absolutePath, [
-                'Content-Type' => $mimeType,
-                'Content-Disposition' => 'inline',
-                'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
-                'Pragma' => 'no-cache',
-                'X-Content-Type-Options' => 'nosniff',
-            ]);
+        return response()->file($absolutePath, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline',
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
+            'Pragma' => 'no-cache',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
-    public function destroy(Course $course): JsonResponse
+    /**
+     * Main Admin can see every course.
+     * Teachers can see only courses they own.
+     */
+    private function visibleCourses(User $user): Builder
     {
-        $course->delete();
+        return Course::query()->when(
+            !$user->isAdmin(),
+            fn (Builder $query) =>
+                $query->where('owner_id', $user->id)
+        );
+    }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Course deleted successfully.',
-        ]);
+    private function authorizeCourseAccess(
+        Course $course,
+        User $user
+    ): void {
+        abort_unless(
+            $user->isAdmin() ||
+            (int) $course->owner_id === (int) $user->id,
+            404
+        );
     }
 
     private function generateUniqueSlug(

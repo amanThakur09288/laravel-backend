@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -11,27 +12,19 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    // Only users with this role can log in to the admin panel
-    private const ADMIN_ROLE = 'admin';
-
-    /**
-     * Login admin user with username and password.
-     * (Limited to 5 attempts per minute, see routes/api.php and AppServiceProvider.)
-     */
     public function login(Request $request): JsonResponse
     {
-        // A session only exists for requests that come from the admin panel
-        // (see SANCTUM_STATEFUL_DOMAINS in .env). Anything else is refused.
-        if (! $request->hasSession()) {
+        if (!$request->hasSession()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Login is only available from the admin panel.',
             ], 419);
         }
 
-        // "Admin" and "admin " are the same username
         $request->merge([
-            'username' => Str::lower(trim((string) $request->input('username'))),
+            'username' => Str::lower(
+                trim((string) $request->input('username'))
+            ),
         ]);
 
         $credentials = $request->validate([
@@ -39,15 +32,29 @@ class AuthController extends Controller
             'password' => ['required', 'string', 'max:255'],
         ]);
 
-        // The role is part of the check, so a normal user can never get in.
-        // Wrong username, wrong password and "not an admin" all show the same message.
-        if (! Auth::attempt([...$credentials, 'role' => self::ADMIN_ROLE])) {
+        $user = User::query()
+            ->where('username', $credentials['username'])
+            ->whereIn('role', [
+                User::ROLE_ADMIN,
+                User::ROLE_TEACHER,
+            ])
+            ->where('is_active', true)
+            ->first();
+
+        if (
+            !$user ||
+            !Auth::attempt([
+                'username' => $credentials['username'],
+                'password' => $credentials['password'],
+            ])
+        ) {
             throw ValidationException::withMessages([
-                'username' => ['The provided credentials are incorrect.'],
+                'username' => [
+                    'The provided credentials are incorrect.',
+                ],
             ]);
         }
 
-        // Prevent session fixation
         $request->session()->regenerate();
 
         return response()->json([
@@ -59,12 +66,9 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Logout current user.
-     */
     public function logout(Request $request): JsonResponse
     {
-        Auth::logout();
+        Auth::guard('web')->logout();
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
@@ -75,9 +79,6 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * Get currently authenticated user.
-     */
     public function user(Request $request): JsonResponse
     {
         return response()->json([
@@ -88,8 +89,7 @@ class AuthController extends Controller
         ]);
     }
 
-    // Only these fields are ever sent to the browser (never the password)
-    private function userData($user): array
+    private function userData(User $user): array
     {
         return [
             'id' => $user->id,
@@ -97,6 +97,7 @@ class AuthController extends Controller
             'username' => $user->username,
             'email' => $user->email,
             'role' => $user->role,
+            'is_active' => (bool) $user->is_active,
         ];
     }
 }

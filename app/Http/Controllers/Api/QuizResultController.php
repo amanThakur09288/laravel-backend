@@ -4,20 +4,22 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\QuizAttempt;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class QuizResultController extends Controller
 {
     /**
-     * Show all quiz attempts/results for admin.
+     * Show quiz results belonging to accessible courses.
      */
     public function index(Request $request): JsonResponse
     {
-        $attempts = QuizAttempt::query()
+        $attempts = $this->visibleAttempts($request->user())
             ->with([
                 'user:id,name,email',
-                'quiz:id,title,total_marks,passing_marks,attempts_allowed',
+                'quiz:id,batch_id,title,total_marks,passing_marks,attempts_allowed',
             ])
             ->whereIn('status', ['submitted', 'expired'])
             ->latest('submitted_at')
@@ -67,7 +69,8 @@ class QuizResultController extends Controller
                     0
                 ),
 
-                'passed' => (float) $attempt->score >=
+                'passed' =>
+                    (float) $attempt->score >=
                     (int) $attempt->quiz->passing_marks,
 
                 'status' => $attempt->status,
@@ -90,19 +93,17 @@ class QuizResultController extends Controller
         Request $request,
         QuizAttempt $attempt
     ): JsonResponse {
+        // Check ownership before loading or returning student information.
+        $attempt = $this->visibleAttempts($request->user())
+            ->findOrFail($attempt->id);
+
         $attempt->load([
             'user:id,name,email',
-            'quiz:id,title,total_marks,passing_marks,attempts_allowed',
+            'quiz:id,batch_id,title,total_marks,passing_marks,attempts_allowed',
             'answers.question.options',
         ]);
 
-        if (
-            ! in_array(
-                $attempt->status,
-                ['submitted', 'expired'],
-                true
-            )
-        ) {
+        if (!in_array($attempt->status, ['submitted', 'expired'], true)) {
             return response()->json([
                 'success' => false,
                 'message' => 'This quiz attempt has not been submitted yet.',
@@ -161,7 +162,6 @@ class QuizResultController extends Controller
                 'marks' => (int) $question->marks,
 
                 'selected_options' => $selectedOptions,
-
                 'correct_options' => $correctOptions,
 
                 'is_correct' => $answer
@@ -232,11 +232,26 @@ class QuizResultController extends Controller
     }
 
     /**
+     * Main Admin sees all attempts.
+     * Teacher sees attempts for quizzes in their own courses.
+     */
+    private function visibleAttempts(User $user): Builder
+    {
+        return QuizAttempt::query()->whereHas(
+            'quiz.batch.course',
+            function ($query) use ($user) {
+                if (!$user->isAdmin()) {
+                    $query->where('owner_id', $user->id);
+                }
+            }
+        );
+    }
+
+    /**
      * Calculate this student's attempt number for this quiz.
      */
-    private function getAttemptNumber(
-        QuizAttempt $attempt
-    ): int {
+    private function getAttemptNumber(QuizAttempt $attempt): int
+    {
         return QuizAttempt::query()
             ->where('quiz_id', $attempt->quiz_id)
             ->where('user_id', $attempt->user_id)

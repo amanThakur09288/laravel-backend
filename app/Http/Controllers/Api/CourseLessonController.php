@@ -3,24 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreCourseLessonRequest;
-use App\Http\Requests\UpdateCourseLessonRequest;
 use App\Models\CourseLesson;
 use App\Models\CourseSection;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 
 class CourseLessonController extends Controller
 {
-    public function index(
-        CourseSection $section
-    ): JsonResponse {
+    public function index(CourseSection $section): JsonResponse
+    {
+        $this->ensureCourseAccess($section, request()->user());
+
         $lessons = $section->lessons()->get();
 
-        $this->attachVideoUrls(
-            $section,
-            $lessons
-        );
+        $this->attachVideoUrls($section, $lessons);
 
         return response()->json([
             'success' => true,
@@ -32,10 +29,9 @@ class CourseLessonController extends Controller
         CourseSection $section,
         CourseLesson $lesson
     ): JsonResponse {
-        $this->ensureLessonBelongsToSection(
-            $section,
-            $lesson
-        );
+        $this->ensureCourseAccess($section, request()->user());
+
+        $this->ensureLessonBelongsToSection($section, $lesson);
 
         $lesson->setAttribute(
             'video_url',
@@ -52,10 +48,9 @@ class CourseLessonController extends Controller
         CourseSection $section,
         CourseLesson $lesson
     ): JsonResponse {
-        $this->ensureLessonBelongsToSection(
-            $section,
-            $lesson
-        );
+        $this->ensureCourseAccess($section, request()->user());
+
+        $this->ensureLessonBelongsToSection($section, $lesson);
 
         $videoPath = $lesson->video_path;
 
@@ -75,10 +70,9 @@ class CourseLessonController extends Controller
         CourseSection $section,
         CourseLesson $lesson
     ) {
-        $this->ensureLessonBelongsToSection(
-            $section,
-            $lesson
-        );
+        $this->ensureCourseAccess($section, request()->user());
+
+        $this->ensureLessonBelongsToSection($section, $lesson);
 
         abort_if(
             !$lesson->video_path,
@@ -94,39 +88,52 @@ class CourseLessonController extends Controller
             'Video file not found.'
         );
 
-        $absolutePath = $disk->path(
-            $lesson->video_path
-        );
+        $absolutePath = $disk->path($lesson->video_path);
 
         $mimeType = $disk->mimeType(
             $lesson->video_path
         ) ?: 'application/octet-stream';
 
-        return response()->file(
-            $absolutePath,
-            [
-                'Content-Type' => $mimeType,
-                'Content-Disposition' =>
-                    'inline; filename="' .
-                    addslashes(
-                        $lesson->video_original_name
-                            ?: 'video'
-                    ) .
-                    '"',
-                'Cache-Control' =>
-                    'private, no-store, max-age=0',
-                'Pragma' => 'no-cache',
-            ]
+        return response()->file($absolutePath, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' =>
+                'inline; filename="' .
+                addslashes(
+                    $lesson->video_original_name ?: 'video'
+                ) .
+                '"',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
+    }
+
+    /**
+     * Check ownership through the parent course.
+     */
+    private function ensureCourseAccess(
+        CourseSection $section,
+        ?User $user
+    ): void {
+        $course = $section->course;
+
+        abort_unless(
+            $user && $course && (
+                $user->isAdmin() ||
+                (int) $course->owner_id === (int) $user->id
+            ),
+            404
         );
     }
 
+    /**
+     * Make sure the lesson belongs to the requested section.
+     */
     private function ensureLessonBelongsToSection(
         CourseSection $section,
         CourseLesson $lesson
     ): void {
         abort_unless(
-            (int) $lesson->course_section_id ===
-                (int) $section->id,
+            (int) $lesson->course_section_id === (int) $section->id,
             404
         );
     }

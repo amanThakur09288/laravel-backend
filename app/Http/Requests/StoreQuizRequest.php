@@ -8,18 +8,12 @@ class StoreQuizRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->role === 'admin';
+        return $this->user()?->isStaff() ?? false;
     }
 
     public function rules(): array
     {
         return [
-            /*
-            |--------------------------------------------------------------------------
-            | Quiz
-            |--------------------------------------------------------------------------
-            */
-
             'batch_id' => [
                 'required',
                 'integer',
@@ -88,12 +82,6 @@ class StoreQuizRequest extends FormRequest
                 'in:draft,published,closed',
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Questions
-            |--------------------------------------------------------------------------
-            */
-
             'questions' => [
                 'required',
                 'array',
@@ -108,11 +96,11 @@ class StoreQuizRequest extends FormRequest
             ],
 
             'questions.*.question_image' => [
-                 'nullable',
-                 'image',
-                 'mimes:jpeg,jpg,png,webp',
-                 'max:5120',
-             ],
+                'nullable',
+                'image',
+                'mimes:jpeg,jpg,png,webp',
+                'max:5120',
+            ],
 
             'questions.*.type' => [
                 'required',
@@ -131,12 +119,6 @@ class StoreQuizRequest extends FormRequest
                 'string',
                 'max:5000',
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | Options
-            |--------------------------------------------------------------------------
-            */
 
             'questions.*.options' => [
                 'required',
@@ -181,12 +163,6 @@ class StoreQuizRequest extends FormRequest
                         )
                         ->values();
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Single select
-                    |--------------------------------------------------------------------------
-                    */
-
                     if (
                         ($question['type'] ?? null) === 'single_select'
                         && $correctOptions->count() !== 1
@@ -197,12 +173,6 @@ class StoreQuizRequest extends FormRequest
                         );
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Multi select
-                    |--------------------------------------------------------------------------
-                    */
-
                     if (
                         ($question['type'] ?? null) === 'multi_select'
                         && $correctOptions->count() < 2
@@ -212,12 +182,6 @@ class StoreQuizRequest extends FormRequest
                             'Multi select questions must have at least two correct options.'
                         );
                     }
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Duplicate option text
-                    |--------------------------------------------------------------------------
-                    */
 
                     $optionTexts = collect($options)
                         ->map(
@@ -237,12 +201,6 @@ class StoreQuizRequest extends FormRequest
                     }
                 }
 
-                /*
-                |--------------------------------------------------------------------------
-                | Passing marks
-                |--------------------------------------------------------------------------
-                */
-
                 $passingMarks = (int) $this->input(
                     'passing_marks',
                     0
@@ -255,22 +213,13 @@ class StoreQuizRequest extends FormRequest
                     );
                 }
 
-                /*
-                |--------------------------------------------------------------------------
-                | Result settings
-                |--------------------------------------------------------------------------
-                */
-
                 $showResult = $this->boolean('show_result');
 
                 $showCorrectAnswers = $this->boolean(
                     'show_correct_answers'
                 );
 
-                if (
-                    !$showResult &&
-                    $showCorrectAnswers
-                ) {
+                if (!$showResult && $showCorrectAnswers) {
                     $validator->errors()->add(
                         'show_correct_answers',
                         'Correct answers cannot be shown when quiz results are disabled.'

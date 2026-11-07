@@ -7,15 +7,20 @@ use App\Http\Requests\StoreCourseSectionRequest;
 use App\Http\Requests\UpdateCourseSectionRequest;
 use App\Models\Course;
 use App\Models\CourseSection;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 class CourseSectionController extends Controller
 {
     public function index(Course $course): JsonResponse
     {
+        $this->ensureCourseAccess($course, request()->user());
+
         $sections = $course->sections()
             ->withCount('lessons')
             ->get();
@@ -30,7 +35,15 @@ class CourseSectionController extends Controller
         StoreCourseSectionRequest $request,
         Course $course
     ): JsonResponse {
+        $this->ensureCourseAccess($course, $request->user());
+
         $validated = $request->validated();
+
+        abort_unless(
+            (int) $validated['course_id'] === (int) $course->id,
+            422,
+            'The selected course does not match the requested course.'
+        );
 
         $storedFiles = [];
 
@@ -49,34 +62,13 @@ class CourseSectionController extends Controller
                 ]);
 
                 foreach ($validated['lessons'] as $index => $lessonData) {
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Get uploaded video for this lesson
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $file = $request->file(
-                        "lessons.$index.video"
-                    );
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Make sure video exists
-                    |--------------------------------------------------------------------------
-                    */
+                    $file = $request->file("lessons.$index.video");
 
                     if (!$file) {
                         throw new \RuntimeException(
-                            "Video file is missing for lesson " . ($index + 1) . "."
+                            'Video file is missing for lesson ' . ($index + 1) . '.'
                         );
                     }
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Store video
-                    |--------------------------------------------------------------------------
-                    */
 
                     $path = $file->store(
                         "course-videos/{$section->id}",
@@ -85,30 +77,21 @@ class CourseSectionController extends Controller
 
                     if (!$path) {
                         throw new \RuntimeException(
-                            "Unable to store video for lesson " . ($index + 1) . "."
+                            'Unable to store video for lesson ' . ($index + 1) . '.'
                         );
                     }
 
                     $storedFiles[] = $path;
-
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Create lesson
-                    |--------------------------------------------------------------------------
-                    */
 
                     $section->lessons()->create([
                         'title' => trim($lessonData['title']),
                         'description' => $lessonData['description'] ?? null,
                         'type' => 'video',
                         'video_path' => $path,
-                        'video_original_name' =>
-                            $file->getClientOriginalName(),
+                        'video_original_name' => $file->getClientOriginalName(),
                         'sort_order' => $index + 1,
-                        'duration_seconds' =>
-                            $lessonData['duration_seconds'] ?? null,
-                        'is_preview' =>
-                            (bool) ($lessonData['is_preview'] ?? false),
+                        'duration_seconds' => $lessonData['duration_seconds'] ?? null,
+                        'is_preview' => (bool) ($lessonData['is_preview'] ?? false),
                         'status' => $lessonData['status'],
                     ]);
                 }
@@ -125,13 +108,6 @@ class CourseSectionController extends Controller
             ], 201);
 
         } catch (Throwable $exception) {
-
-            /*
-            |--------------------------------------------------------------------------
-            | Remove uploaded files if database operation fails
-            |--------------------------------------------------------------------------
-            */
-
             if (!empty($storedFiles)) {
                 Storage::disk('local')->delete($storedFiles);
             }
@@ -149,10 +125,8 @@ class CourseSectionController extends Controller
         Course $course,
         CourseSection $section
     ): JsonResponse {
-        $this->ensureSectionBelongsToCourse(
-            $course,
-            $section
-        );
+        $this->ensureCourseAccess($course, request()->user());
+        $this->ensureSectionBelongsToCourse($course, $section);
 
         $section->load([
             'lessons' => fn ($query) =>
@@ -172,12 +146,17 @@ class CourseSectionController extends Controller
         Course $course,
         CourseSection $section
     ): JsonResponse {
-        $this->ensureSectionBelongsToCourse(
-            $course,
-            $section
-        );
+        $this->ensureCourseAccess($course, $request->user());
+        $this->ensureSectionBelongsToCourse($course, $section);
 
         $validated = $request->validated();
+
+        // The destination course must independently be accessible.
+        $targetCourse = Course::query()->findOrFail(
+            (int) $validated['course_id']
+        );
+
+        $this->ensureCourseAccess($targetCourse, $request->user());
 
         $newFiles = [];
         $oldFiles = [];
@@ -186,6 +165,8 @@ class CourseSectionController extends Controller
             DB::transaction(function () use (
                 $validated,
                 $section,
+                $course,
+                $targetCourse,
                 &$newFiles,
                 &$oldFiles,
                 $request
@@ -195,8 +176,15 @@ class CourseSectionController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                // Re-check the parent relationship after acquiring the lock.
+                abort_unless(
+                    (int) $section->course_id === (int) $course->id,
+                    404
+                );
+
+                // Moving is allowed only to the independently authorized course.
                 $section->update([
-                    'course_id' => $validated['course_id'],
+                    'course_id' => $targetCourse->id,
                     'title' => trim($validated['title']),
                     'description' => $validated['description'] ?? null,
                     'sort_order' => $validated['sort_order'],
@@ -209,22 +197,12 @@ class CourseSectionController extends Controller
 
                 $processedLessonIds = [];
 
-                foreach (
-                    $validated['lessons']
-                    as $index => $lessonData
-                ) {
+                foreach ($validated['lessons'] as $index => $lessonData) {
                     $lessonId = $lessonData['id'] ?? null;
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | Existing lesson
-                    |--------------------------------------------------------------------------
-                    */
-
+                    // Existing lesson.
                     if ($lessonId) {
-                        $lesson = $existingLessons->get(
-                            (int) $lessonId
-                        );
+                        $lesson = $existingLessons->get((int) $lessonId);
 
                         abort_unless($lesson, 422);
 
@@ -232,26 +210,15 @@ class CourseSectionController extends Controller
 
                         $updateData = [
                             'title' => trim($lessonData['title']),
-                            'description' =>
-                                $lessonData['description'] ?? null,
+                            'description' => $lessonData['description'] ?? null,
                             'type' => 'video',
                             'sort_order' => $index + 1,
-                            'duration_seconds' =>
-                                $lessonData['duration_seconds'] ?? null,
-                            'is_preview' =>
-                                (bool) ($lessonData['is_preview'] ?? false),
+                            'duration_seconds' => $lessonData['duration_seconds'] ?? null,
+                            'is_preview' => (bool) ($lessonData['is_preview'] ?? false),
                             'status' => $lessonData['status'],
                         ];
 
-                        /*
-                        |--------------------------------------------------------------------------
-                        | Check if new video was uploaded
-                        |--------------------------------------------------------------------------
-                        */
-
-                        $file = $request->file(
-                            "lessons.$index.video"
-                        );
+                        $file = $request->file("lessons.$index.video");
 
                         if ($file) {
                             $newPath = $file->store(
@@ -261,9 +228,8 @@ class CourseSectionController extends Controller
 
                             if (!$newPath) {
                                 throw new \RuntimeException(
-                                    "Unable to store replacement video for lesson " .
-                                    ($index + 1) .
-                                    "."
+                                    'Unable to store replacement video for lesson ' .
+                                    ($index + 1) . '.'
                                 );
                             }
 
@@ -274,7 +240,6 @@ class CourseSectionController extends Controller
                             }
 
                             $updateData['video_path'] = $newPath;
-
                             $updateData['video_original_name'] =
                                 $file->getClientOriginalName();
                         }
@@ -284,21 +249,12 @@ class CourseSectionController extends Controller
                         continue;
                     }
 
-                    /*
-                    |--------------------------------------------------------------------------
-                    | New lesson
-                    |--------------------------------------------------------------------------
-                    */
-
-                    $file = $request->file(
-                        "lessons.$index.video"
-                    );
+                    // New lesson.
+                    $file = $request->file("lessons.$index.video");
 
                     if (!$file) {
                         throw new \RuntimeException(
-                            "Video file is missing for lesson " .
-                            ($index + 1) .
-                            "."
+                            'Video file is missing for lesson ' . ($index + 1) . '.'
                         );
                     }
 
@@ -309,9 +265,7 @@ class CourseSectionController extends Controller
 
                     if (!$path) {
                         throw new \RuntimeException(
-                            "Unable to store video for lesson " .
-                            ($index + 1) .
-                            "."
+                            'Unable to store video for lesson ' . ($index + 1) . '.'
                         );
                     }
 
@@ -319,37 +273,26 @@ class CourseSectionController extends Controller
 
                     $lesson = $section->lessons()->create([
                         'title' => trim($lessonData['title']),
-                        'description' =>
-                            $lessonData['description'] ?? null,
+                        'description' => $lessonData['description'] ?? null,
                         'type' => 'video',
                         'video_path' => $path,
-                        'video_original_name' =>
-                            $file->getClientOriginalName(),
+                        'video_original_name' => $file->getClientOriginalName(),
                         'sort_order' => $index + 1,
-                        'duration_seconds' =>
-                            $lessonData['duration_seconds'] ?? null,
-                        'is_preview' =>
-                            (bool) ($lessonData['is_preview'] ?? false),
+                        'duration_seconds' => $lessonData['duration_seconds'] ?? null,
+                        'is_preview' => (bool) ($lessonData['is_preview'] ?? false),
                         'status' => $lessonData['status'],
                     ]);
 
                     $processedLessonIds[] = $lesson->id;
                 }
 
-                /*
-                |--------------------------------------------------------------------------
-                | Delete lessons removed from edit form
-                |--------------------------------------------------------------------------
-                */
-
+                // Remove lessons omitted from the submitted edit form.
                 foreach ($existingLessons as $lesson) {
-                    if (
-                        !in_array(
-                            $lesson->id,
-                            $processedLessonIds,
-                            true
-                        )
-                    ) {
+                    if (!in_array(
+                        $lesson->id,
+                        $processedLessonIds,
+                        true
+                    )) {
                         if ($lesson->video_path) {
                             $oldFiles[] = $lesson->video_path;
                         }
@@ -359,12 +302,7 @@ class CourseSectionController extends Controller
                 }
             });
 
-            /*
-            |--------------------------------------------------------------------------
-            | Delete old video files after successful transaction
-            |--------------------------------------------------------------------------
-            */
-
+            // Remove replaced/deleted files only after the DB transaction succeeds.
             if (!empty($oldFiles)) {
                 Storage::disk('local')->delete($oldFiles);
             }
@@ -380,15 +318,17 @@ class CourseSectionController extends Controller
             ]);
 
         } catch (Throwable $exception) {
-
-            /*
-            |--------------------------------------------------------------------------
-            | Remove newly uploaded files if update fails
-            |--------------------------------------------------------------------------
-            */
-
             if (!empty($newFiles)) {
                 Storage::disk('local')->delete($newFiles);
+            }
+
+            // Preserve proper 404/422 responses rather than converting them to 500.
+            if (
+                $exception instanceof HttpExceptionInterface ||
+                $exception instanceof ValidationException ||
+                $exception instanceof \Illuminate\Database\Eloquent\ModelNotFoundException
+            ) {
+                throw $exception;
             }
 
             report($exception);
@@ -404,10 +344,8 @@ class CourseSectionController extends Controller
         Course $course,
         CourseSection $section
     ): JsonResponse {
-        $this->ensureSectionBelongsToCourse(
-            $course,
-            $section
-        );
+        $this->ensureCourseAccess($course, request()->user());
+        $this->ensureSectionBelongsToCourse($course, $section);
 
         $videoFiles = $section->lessons()
             ->whereNotNull('video_path')
@@ -431,7 +369,6 @@ class CourseSectionController extends Controller
             ]);
 
         } catch (Throwable $exception) {
-
             report($exception);
 
             return response()->json([
@@ -439,6 +376,19 @@ class CourseSectionController extends Controller
                 'message' => 'Unable to delete video section.',
             ], 500);
         }
+    }
+
+    private function ensureCourseAccess(
+        Course $course,
+        ?User $user
+    ): void {
+        abort_unless(
+            $user && (
+                $user->isAdmin() ||
+                (int) $course->owner_id === (int) $user->id
+            ),
+            404
+        );
     }
 
     private function ensureSectionBelongsToCourse(
@@ -451,24 +401,21 @@ class CourseSectionController extends Controller
         );
     }
 
-    private function attachVideoUrls(
-        CourseSection $section
-    ): void {
-        $section->lessons->each(
-            function ($lesson) use ($section) {
-                $lesson->setAttribute(
-                    'video_url',
-                    $lesson->video_path
-                        ? route(
-                            'admin.sections.lessons.video',
-                            [
-                                'section' => $section->id,
-                                'lesson' => $lesson->id,
-                            ]
-                        )
-                        : null
-                );
-            }
-        );
+    private function attachVideoUrls(CourseSection $section): void
+    {
+        $section->lessons->each(function ($lesson) use ($section) {
+            $lesson->setAttribute(
+                'video_url',
+                $lesson->video_path
+                    ? route(
+                        'admin.sections.lessons.video',
+                        [
+                            'section' => $section->id,
+                            'lesson' => $lesson->id,
+                        ]
+                    )
+                    : null
+            );
+        });
     }
 }

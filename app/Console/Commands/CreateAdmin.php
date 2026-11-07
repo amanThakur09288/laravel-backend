@@ -14,7 +14,7 @@ class CreateAdmin extends Command
 {
     protected $signature = 'admin:create';
 
-    protected $description = 'Create an admin user, or reset the password of an existing one';
+    protected $description = 'Create a teacher account, or reset the password of an existing teacher';
 
     // Shortest password allowed (it must also have letters and numbers)
     private const MIN_PASSWORD_LENGTH = 6;
@@ -60,21 +60,33 @@ class CreateAdmin extends Command
             return self::FAILURE;
         }
 
-        // Creates the admin, or updates it if the email already exists
+        // Do not accidentally convert a student account into a staff account.
+        if ($existing && !in_array($existing->role, [
+            User::ROLE_ADMIN,
+            User::ROLE_TEACHER,
+        ], true)) {
+            $this->error('This email belongs to a student account. Use a different email.');
+
+            return self::FAILURE;
+        }
+
+        // New accounts are Teachers. Existing Main Admin accounts keep their role.
         $user = User::updateOrCreate(
             ['email' => $email],
             [
                 'name' => $name,
                 'username' => $username,
                 'password' => $password,
-                'role' => 'admin',
+                'role' => $existing?->role === User::ROLE_ADMIN
+                    ? User::ROLE_ADMIN
+                    : User::ROLE_TEACHER,
             ]
         );
 
         // A new password logs the admin out of every open session
         DB::table('sessions')->where('user_id', $user->id)->delete();
 
-        $this->info("Admin saved. Username: {$username}");
+        $this->info("Teacher account saved. Username: {$username}");
 
         return self::SUCCESS;
     }

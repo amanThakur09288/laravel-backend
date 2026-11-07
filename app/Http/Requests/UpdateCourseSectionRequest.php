@@ -10,18 +10,34 @@ class UpdateCourseSectionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->role === 'admin';
+        $user = $this->user();
+        $course = $this->route('course');
+
+        if (!$user || !$course || !$user->isStaff()) {
+            return false;
+        }
+
+        abort_unless(
+            $user->isAdmin() ||
+            (int) $course->owner_id === (int) $user->id,
+            404
+        );
+
+        if ($this->route('section')) {
+            $section = $this->route('section');
+
+            abort_unless(
+                (int) $section->course_id === (int) $course->id,
+                404
+            );
+        }
+
+        return true;
     }
 
     public function rules(): array
     {
         return [
-            /*
-            |--------------------------------------------------------------------------
-            | Section
-            |--------------------------------------------------------------------------
-            */
-
             'course_id' => [
                 'required',
                 'integer',
@@ -53,12 +69,6 @@ class UpdateCourseSectionRequest extends FormRequest
                 ]),
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Lessons
-            |--------------------------------------------------------------------------
-            */
-
             'lessons' => [
                 'required',
                 'array',
@@ -85,9 +95,7 @@ class UpdateCourseSectionRequest extends FormRequest
 
             'lessons.*.type' => [
                 'required',
-                Rule::in([
-                    'video',
-                ]),
+                Rule::in(['video']),
             ],
 
             'lessons.*.sort_order' => [
@@ -114,19 +122,6 @@ class UpdateCourseSectionRequest extends FormRequest
                     'published',
                 ]),
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | Video
-            |--------------------------------------------------------------------------
-            |
-            | Existing lesson:
-            |     video = optional
-            |
-            | New lesson:
-            |     video = required
-            |
-            */
 
             'lessons.*.video' => [
                 'nullable',
@@ -175,30 +170,17 @@ class UpdateCourseSectionRequest extends FormRequest
             $lessons = $this->input('lessons', []);
 
             foreach ($lessons as $index => $lesson) {
-                /*
-                |--------------------------------------------------------------------------
-                | New lesson must have a video
-                |--------------------------------------------------------------------------
-                */
-
                 $lessonId = $lesson['id'] ?? null;
 
-                $video = $this->file(
-                    "lessons.$index.video"
-                );
+                $video = $this->file("lessons.$index.video");
 
+                // A new lesson must have its own uploaded video.
                 if (!$lessonId && !$video) {
                     $validator->errors()->add(
                         "lessons.$index.video",
                         'Please select a video for the new lesson.'
                     );
                 }
-
-                /*
-                |--------------------------------------------------------------------------
-                | Duration validation
-                |--------------------------------------------------------------------------
-                */
 
                 if (
                     isset($lesson['duration_seconds']) &&

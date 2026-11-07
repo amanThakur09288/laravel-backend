@@ -10,18 +10,34 @@ class StoreCourseSectionRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->role === 'admin';
+        $user = $this->user();
+        $course = $this->route('course');
+
+        if (!$user || !$course || !$user->isStaff()) {
+            return false;
+        }
+
+        abort_unless(
+            $user->isAdmin() ||
+            (int) $course->owner_id === (int) $user->id,
+            404
+        );
+
+        if ($this->route('section')) {
+            $section = $this->route('section');
+
+            abort_unless(
+                (int) $section->course_id === (int) $course->id,
+                404
+            );
+        }
+
+        return true;
     }
 
     public function rules(): array
     {
         return [
-            /*
-            |--------------------------------------------------------------------------
-            | Section
-            |--------------------------------------------------------------------------
-            */
-
             'course_id' => [
                 'required',
                 'integer',
@@ -53,12 +69,6 @@ class StoreCourseSectionRequest extends FormRequest
                 ]),
             ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Lessons
-            |--------------------------------------------------------------------------
-            */
-
             'lessons' => [
                 'required',
                 'array',
@@ -79,9 +89,7 @@ class StoreCourseSectionRequest extends FormRequest
 
             'lessons.*.type' => [
                 'required',
-                Rule::in([
-                    'video',
-                ]),
+                Rule::in(['video']),
             ],
 
             'lessons.*.sort_order' => [
@@ -108,16 +116,6 @@ class StoreCourseSectionRequest extends FormRequest
                     'published',
                 ]),
             ],
-
-            /*
-            |--------------------------------------------------------------------------
-            | Video
-            |--------------------------------------------------------------------------
-            |
-            | Maximum: 500 MB per video
-            | 512000 KB = 500 MB
-            |
-            */
 
             'lessons.*.video' => [
                 'required',

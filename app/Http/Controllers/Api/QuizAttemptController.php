@@ -14,11 +14,12 @@ class QuizAttemptController extends Controller
 {
     public function __construct(
         private QuizAttemptService $attemptService
-    ) {}
+    ) {
+    }
 
     /*
     |--------------------------------------------------------------------------
-    | Start Quiz
+    | START QUIZ
     |--------------------------------------------------------------------------
     */
 
@@ -26,17 +27,11 @@ class QuizAttemptController extends Controller
         Request $request,
         Quiz $quiz
     ): JsonResponse {
-        $request->validate([
-            'user_id' => [
-                'required',
-                'integer',
-                'exists:users,id',
-            ],
-        ]);
+        $student = $request->user();
 
         $data = $this->attemptService->start(
             $quiz,
-            (int) $request->user_id
+            (int) $student->id
         );
 
         return response()->json([
@@ -48,7 +43,7 @@ class QuizAttemptController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Get Attempt
+    | GET / RESUME ATTEMPT
     |--------------------------------------------------------------------------
     */
 
@@ -56,17 +51,9 @@ class QuizAttemptController extends Controller
         Request $request,
         QuizAttempt $attempt
     ): JsonResponse {
-        $request->validate([
-            'user_id' => [
-                'required',
-                'integer',
-                'exists:users,id',
-            ],
-        ]);
-
         $data = $this->attemptService->show(
             $attempt,
-            (int) $request->user_id
+            (int) $request->user()->id
         );
 
         return response()->json([
@@ -77,47 +64,18 @@ class QuizAttemptController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Save Answer
+    | SAVE ANSWER
     |--------------------------------------------------------------------------
     */
 
     public function saveAnswer(
-        Request $request,
+        SaveQuizAnswerRequest $request,
         QuizAttempt $attempt
     ): JsonResponse {
-        $request->validate([
-            'user_id' => [
-                'required',
-                'integer',
-                'exists:users,id',
-            ],
-            'quiz_question_id' => [
-                'required',
-                'integer',
-                'exists:quiz_questions,id',
-            ],
-            'selected_option_ids' => [
-                'present',
-                'array',
-                'max:20',
-            ],
-            'selected_option_ids.*' => [
-                'integer',
-                'distinct',
-                'exists:quiz_options,id',
-            ],
-        ]);
-
         $data = $this->attemptService->saveAnswer(
             $attempt,
-            (int) $request->user_id,
-            [
-                'quiz_question_id' =>
-                    $request->quiz_question_id,
-
-                'selected_option_ids' =>
-                    $request->selected_option_ids,
-            ]
+            (int) $request->user()->id,
+            $request->validated()
         );
 
         return response()->json([
@@ -129,7 +87,7 @@ class QuizAttemptController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Submit Quiz
+    | SUBMIT QUIZ
     |--------------------------------------------------------------------------
     */
 
@@ -137,17 +95,9 @@ class QuizAttemptController extends Controller
         Request $request,
         QuizAttempt $attempt
     ): JsonResponse {
-        $request->validate([
-            'user_id' => [
-                'required',
-                'integer',
-                'exists:users,id',
-            ],
-        ]);
-
         $data = $this->attemptService->submit(
             $attempt,
-            (int) $request->user_id
+            (int) $request->user()->id
         );
 
         return response()->json([
@@ -159,7 +109,7 @@ class QuizAttemptController extends Controller
 
     /*
     |--------------------------------------------------------------------------
-    | Result
+    | GET RESULT
     |--------------------------------------------------------------------------
     */
 
@@ -167,17 +117,9 @@ class QuizAttemptController extends Controller
         Request $request,
         QuizAttempt $attempt
     ): JsonResponse {
-        $request->validate([
-            'user_id' => [
-                'required',
-                'integer',
-                'exists:users,id',
-            ],
-        ]);
-
         $data = $this->attemptService->result(
             $attempt,
-            (int) $request->user_id
+            (int) $request->user()->id
         );
 
         return response()->json([

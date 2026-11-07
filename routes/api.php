@@ -1,3 +1,4 @@
+
 <?php
 
 use Illuminate\Support\Facades\Route;
@@ -14,73 +15,146 @@ use App\Http\Controllers\Api\QuizAttemptController;
 use App\Http\Controllers\Api\QuizResultController;
 use App\Http\Controllers\Api\CourseSectionController;
 use App\Http\Controllers\Api\CourseLessonController;
+use App\Http\Controllers\Api\AdminUserController;
+use App\Http\Controllers\Api\StudentAuthController;
+use App\Http\Controllers\Api\StudentController;
 
 /*
 |--------------------------------------------------------------------------
-| PUBLIC routes (anyone can use them)
+| PUBLIC ROUTES
 |--------------------------------------------------------------------------
 */
 
 Route::get('/hello', [HelloController::class, 'hello']);
 
-// Admin login: 5 attempts per minute for the same email and IP
-// (the "login" limit is defined in AppServiceProvider)
-Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
+Route::post('/login', [AuthController::class, 'login'])
+    ->middleware('throttle:login');
 
-// Website: read only, found by slug
 Route::get('/public/batches', [BatchController::class, 'publicIndex']);
+
 Route::get('/public/batches/{slug}', [BatchController::class, 'publicShow'])
     ->where('slug', '[a-z0-9\-]+');
 
 Route::get('/public/courses', [CourseController::class, 'publicIndex']);
+
 Route::get('/public/courses/{slug}', [CourseController::class, 'publicShow'])
     ->where('slug', '[a-z0-9\-]+');
 
-    Route::get(
+Route::get(
     '/public/courses/{slug}/lessons/{lesson}/video',
     [CourseController::class, 'streamLessonVideo']
 )->name('public.courses.lessons.video');
 
 Route::get('/public/services', [ServiceController::class, 'publicIndex']);
+
 Route::get('/public/services/{slug}', [ServiceController::class, 'publicShow'])
     ->where('slug', '[a-z0-9\-]+');
 
-// Website contact form: max 5 messages per 10 minutes per IP
 Route::post('/contact', [ContactMessageController::class, 'store'])
     ->middleware('throttle:5,10');
 
 Route::get('/public/quizzes', [QuizController::class, 'publicIndex']);
+
 Route::get('/public/quizzes/{id}', [QuizController::class, 'publicShow'])
     ->whereNumber('id');
 
-Route::post('/quizzes/{quiz}/attempts', [QuizAttemptController::class,'store',]);
-Route::get('/attempts/{attempt}', [QuizAttemptController::class,'show',]);
-Route::put('/attempts/{attempt}/answers', [QuizAttemptController::class,'saveAnswer',]);
-Route::post('/attempts/{attempt}/submit', [QuizAttemptController::class,'submit',]);
-Route::get('/attempts/{attempt}/result', [QuizAttemptController::class,'result',]);
 
 /*
 |--------------------------------------------------------------------------
-| ADMIN routes (the admin must be logged in)
+| STUDENT AUTHENTICATION
 |--------------------------------------------------------------------------
 */
 
-Route::middleware('auth:sanctum')->group(function () {
+Route::prefix('student')
+    ->middleware('throttle:10,1')
+    ->group(function () {
+        Route::post('/register', [StudentAuthController::class, 'register']);
+        Route::post('/login', [StudentAuthController::class, 'login']);
+    });
+
+
+/*
+|--------------------------------------------------------------------------
+| AUTHENTICATED STUDENT ROUTES
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware([
+    'auth:sanctum',
+    'role:user',
+])->prefix('student')->group(function () {
+    Route::get('/user', [StudentAuthController::class, 'user']);
+    Route::post('/logout', [StudentAuthController::class, 'logout']);
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| STUDENT QUIZ ATTEMPTS
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware([
+    'auth:sanctum',
+    'role:user',
+])->group(function () {
+    Route::post(
+        '/quizzes/{quiz}/attempts',
+        [QuizAttemptController::class, 'store']
+    );
+
+    Route::get(
+        '/attempts/{attempt}',
+        [QuizAttemptController::class, 'show']
+    );
+
+    Route::put(
+        '/attempts/{attempt}/answers',
+        [QuizAttemptController::class, 'saveAnswer']
+    );
+
+    Route::post(
+        '/attempts/{attempt}/submit',
+        [QuizAttemptController::class, 'submit']
+    );
+
+    Route::get(
+        '/attempts/{attempt}/result',
+        [QuizAttemptController::class, 'result']
+    );
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| AUTHENTICATED ADMIN AND TEACHER ROUTES
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware([
+    'auth:sanctum',
+    'role:admin,teacher',
+])->group(function () {
+
     Route::post('/logout', [AuthController::class, 'logout']);
+
     Route::get('/user', [AuthController::class, 'user']);
 
-    Route::apiResource('products', ProductController::class);
-    Route::apiResource('batches', BatchController::class);
-    Route::apiResource('courses', CourseController::class);
-    Route::apiResource('services', ServiceController::class);
-
-    Route::apiResource('quizzes', QuizController::class);
-    Route::get('/quiz-results', [QuizResultController::class, 'index',]);
-    Route::get('/quiz-results/{attempt}', [QuizResultController::class,'show',]);
 
     /*
     |--------------------------------------------------------------------------
-    | Video Sections
+    | COURSES AND BATCHES
+    |--------------------------------------------------------------------------
+    */
+
+    Route::apiResource('batches', BatchController::class);
+
+    Route::apiResource('courses', CourseController::class);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | COURSE SECTIONS
     |--------------------------------------------------------------------------
     */
 
@@ -89,9 +163,10 @@ Route::middleware('auth:sanctum')->group(function () {
         CourseSectionController::class
     );
 
+
     /*
     |--------------------------------------------------------------------------
-    | Video Lessons
+    | VIDEO LESSONS
     |--------------------------------------------------------------------------
     */
 
@@ -104,33 +179,100 @@ Route::middleware('auth:sanctum')->group(function () {
         'destroy',
     ]);
 
+
     /*
     |--------------------------------------------------------------------------
-    | Secure Video Playback
+    | SECURE ADMIN VIDEO PLAYBACK
     |--------------------------------------------------------------------------
     */
 
-    Route::get('sections/{section}/lessons/{lesson}/video',[CourseLessonController::class, 'video'])->name('admin.sections.lessons.video');
+    Route::get(
+        'sections/{section}/lessons/{lesson}/video',
+        [CourseLessonController::class, 'video']
+    )->name('admin.sections.lessons.video');
 
 
-    // Route::apiResource('courses.sections',CourseSectionController::class);
-    // Route::apiResource('sections.lessons',CourseLessonController::class);
     /*
     |--------------------------------------------------------------------------
-    | Quiz Attempts
+    | QUIZZES
     |--------------------------------------------------------------------------
-    | These are for authenticated users/students.
-    |
     */
 
-    // Route::post('/quizzes/{quiz}/attempts',[QuizAttemptController::class,'store']);
-    // Route::get('/attempts/{attempt}',[QuizAttemptController::class,'show']);
-    // Route::put('/attempts/{attempt}/answers',[QuizAttemptController::class,'saveAnswer']);
-    // Route::post('/attempts/{attempt}/submit',[QuizAttemptController::class,'submit']);
-    // Route::get('/attempts/{attempt}/result',[QuizAttemptController::class,'result']);
+    Route::apiResource('quizzes', QuizController::class);
 
-    // The admin can only list, view and delete messages
-    // (new messages come from the public /contact route above)
-    Route::apiResource('contact-messages', ContactMessageController::class)
-        ->only(['index', 'show', 'destroy']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | QUIZ RESULTS
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get(
+        '/quiz-results',
+        [QuizResultController::class, 'index']
+    );
+
+    Route::get(
+        '/quiz-results/{attempt}',
+        [QuizResultController::class, 'show']
+    );
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | MAIN ADMIN ONLY
+    |--------------------------------------------------------------------------
+    */
+
+    Route::middleware('role:admin')->group(function () {
+
+        // Global website content.
+        Route::apiResource('products', ProductController::class);
+
+        Route::apiResource('services', ServiceController::class);
+
+
+        // Contact messages.
+        Route::apiResource(
+            'contact-messages',
+            ContactMessageController::class
+        )->only([
+            'index',
+            'show',
+            'destroy',
+        ]);
+
+
+        // Student management.
+        Route::apiResource('students', StudentController::class)
+            ->only([
+                'index',
+                'show',
+                'update',
+                'destroy',
+            ]);
+
+        Route::patch(
+            '/students/{student}/status',
+            [StudentController::class, 'updateStatus']
+        );
+
+
+        // Teacher management.
+        Route::prefix('admin-users')->group(function () {
+
+            Route::get('/', [AdminUserController::class, 'index']);
+
+            Route::post('/', [AdminUserController::class, 'store']);
+
+            Route::get('/{admin}', [AdminUserController::class, 'show']);
+
+            Route::put('/{admin}', [AdminUserController::class, 'update']);
+
+            Route::patch(
+                '/{admin}/status',
+                [AdminUserController::class, 'updateStatus']
+            );
+        });
+    });
 });
