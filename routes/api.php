@@ -26,7 +26,7 @@ use App\Http\Controllers\Api\StudentController;
 */
 
 Route::get('/hello', [HelloController::class, 'hello']);
-
+Route::get('/csrf-cookie', fn () => response()->json(['success' => true]));
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:login');
 
