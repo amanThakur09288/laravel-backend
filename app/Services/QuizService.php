@@ -37,7 +37,10 @@ class QuizService
                 );
 
             $quiz = Quiz::create([
-                'batch_id' => $data['batch_id'],
+                'batch_id' => $data['batch_id'] ?? null,
+                'course_id' => $data['course_id'] ?? null,
+                'course_section_id' => $data['course_section_id'] ?? null,
+                'course_lesson_id' => $data['course_lesson_id'] ?? null,
                 'created_by' => $admin->id,
 
                 'title' => $data['title'],
@@ -141,8 +144,10 @@ class QuizService
             */
 
             $updateData = [
-                'batch_id' => $data['batch_id'],
-
+                'batch_id' => $data['batch_id'] ?? null,
+                'course_id' => $data['course_id'] ?? null,
+                'course_section_id' => $data['course_section_id'] ?? null,
+                'course_lesson_id' => $data['course_lesson_id'] ?? null,
                 'title' => $data['title'],
 
                 'description' =>
@@ -1003,6 +1008,9 @@ class QuizService
     ): Quiz {
         return $quiz->load([
             'batch.course',
+            'course',
+            'section',
+            'lesson',
             'creator:id,name,email',
             'questions.options',
         ])->loadCount('questions');

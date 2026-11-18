@@ -2,6 +2,8 @@
 
 namespace App\Http\Requests;
 
+use App\Models\CourseLesson;
+use App\Models\CourseSection;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreQuizRequest extends FormRequest
@@ -15,9 +17,27 @@ class StoreQuizRequest extends FormRequest
     {
         return [
             'batch_id' => [
-                'required',
+                'nullable',
                 'integer',
                 'exists:batches,id',
+            ],
+
+            'course_id' => [
+                'nullable',
+                'integer',
+                'exists:courses,id',
+            ],
+
+            'course_section_id' => [
+                'nullable',
+                'integer',
+                'exists:course_sections,id',
+            ],
+
+            'course_lesson_id' => [
+                'nullable',
+                'integer',
+                'exists:course_lessons,id',
             ],
 
             'title' => [
@@ -144,6 +164,8 @@ class StoreQuizRequest extends FormRequest
     {
         return [
             function ($validator) {
+                $this->validatePlacement($validator);
+
                 $questions = $this->input('questions', []);
 
                 $totalMarks = 0;
@@ -227,5 +249,70 @@ class StoreQuizRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    private function validatePlacement($validator): void
+    {
+        $courseId = $this->input('course_id');
+        $batchId = $this->input('batch_id');
+        $sectionId = $this->input('course_section_id');
+        $lessonId = $this->input('course_lesson_id');
+
+        if (!$courseId && !$batchId) {
+            $validator->errors()->add(
+                'course_id',
+                'Select a course for this quiz.'
+            );
+
+            return;
+        }
+
+        if ($sectionId && !$courseId) {
+            $validator->errors()->add(
+                'course_id',
+                'Select a course before selecting a module.'
+            );
+
+            return;
+        }
+
+        if ($lessonId && !$sectionId) {
+            $validator->errors()->add(
+                'course_section_id',
+                'Select a module before selecting a lesson.'
+            );
+
+            return;
+        }
+
+        if ($sectionId && $courseId) {
+            $section = CourseSection::query()->find($sectionId);
+
+            if (
+                !$section ||
+                (int) $section->course_id !== (int) $courseId
+            ) {
+                $validator->errors()->add(
+                    'course_section_id',
+                    'The selected module does not belong to the selected course.'
+                );
+
+                return;
+            }
+        }
+
+        if ($lessonId && $sectionId) {
+            $lesson = CourseLesson::query()->find($lessonId);
+
+            if (
+                !$lesson ||
+                (int) $lesson->course_section_id !== (int) $sectionId
+            ) {
+                $validator->errors()->add(
+                    'course_lesson_id',
+                    'The selected lesson does not belong to the selected module.'
+                );
+            }
+        }
     }
 }

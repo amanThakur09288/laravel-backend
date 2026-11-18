@@ -10,6 +10,12 @@ class Quiz extends Model
 {
     protected $fillable = [
         'batch_id',
+
+        // Optional course placement
+        'course_id',
+        'course_section_id',
+        'course_lesson_id',
+
         'created_by',
         'title',
         'slug',
@@ -44,6 +50,27 @@ class Quiz extends Model
     public function batch(): BelongsTo
     {
         return $this->belongsTo(Batch::class);
+    }
+
+    public function course(): BelongsTo
+    {
+        return $this->belongsTo(Course::class);
+    }
+
+    public function section(): BelongsTo
+    {
+        return $this->belongsTo(
+            CourseSection::class,
+            'course_section_id'
+        );
+    }
+
+    public function lesson(): BelongsTo
+    {
+        return $this->belongsTo(
+            CourseLesson::class,
+            'course_lesson_id'
+        );
     }
 
     public function creator(): BelongsTo

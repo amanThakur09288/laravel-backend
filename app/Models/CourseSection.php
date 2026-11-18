@@ -20,20 +20,22 @@ class CourseSection extends Model
         'sort_order' => 'integer',
     ];
 
-    /**
-     * Section belongs to one course.
-     */
     public function course(): BelongsTo
     {
         return $this->belongsTo(Course::class);
     }
 
-    /**
-     * Section has many lessons.
-     */
     public function lessons(): HasMany
     {
         return $this->hasMany(CourseLesson::class)
             ->orderBy('sort_order');
+    }
+
+    public function quizzes(): HasMany
+    {
+        return $this->hasMany(
+            Quiz::class,
+            'course_section_id'
+        );
     }
 }

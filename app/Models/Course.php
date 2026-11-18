@@ -16,26 +16,21 @@ class Course extends Model
         'slug',
         'category',
         'level',
-
         'short_description',
         'course_description',
-
         'duration',
         'total_hours',
-
         'learning_outcomes',
         'curriculum',
         'prerequisites',
         'who_should_join',
         'course_features',
         'faqs',
-
         'status',
     ];
 
     protected $casts = [
         'total_hours' => 'integer',
-
         'learning_outcomes' => 'array',
         'curriculum' => 'array',
         'prerequisites' => 'array',
@@ -52,28 +47,24 @@ class Course extends Model
         );
     }
 
-    /**
-     * Course belongs to the admin who owns it.
-     */
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'owner_id');
     }
 
-    /**
-     * Course has many batches.
-     */
     public function batches(): HasMany
     {
         return $this->hasMany(Batch::class);
     }
 
-    /**
-     * Course has many sections.
-     */
     public function sections(): HasMany
     {
         return $this->hasMany(CourseSection::class)
             ->orderBy('sort_order');
+    }
+
+    public function quizzes(): HasMany
+    {
+        return $this->hasMany(Quiz::class);
     }
 }

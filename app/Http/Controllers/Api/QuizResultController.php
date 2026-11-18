@@ -235,17 +235,50 @@ class QuizResultController extends Controller
      * Main Admin sees all attempts.
      * Teacher sees attempts for quizzes in their own courses.
      */
-    private function visibleAttempts(User $user): Builder
-    {
-        return QuizAttempt::query()->whereHas(
-            'quiz.batch.course',
-            function ($query) use ($user) {
-                if (!$user->isAdmin()) {
-                    $query->where('owner_id', $user->id);
-                }
-            }
-        );
-    }
+    // private function visibleAttempts(User $user): Builder
+    // {
+    //     return QuizAttempt::query()->whereHas(
+    //         'quiz.batch.course',
+    //         function ($query) use ($user) {
+    //             if (!$user->isAdmin()) {
+    //                 $query->where('owner_id', $user->id);
+    //             }
+    //         }
+    //     );
+    // }
+
+
+private function visibleAttempts(User $user): Builder
+{
+    return QuizAttempt::query()->whereHas(
+        'quiz',
+        function ($quizQuery) use ($user) {
+            $quizQuery->where(function ($placementQuery) use ($user) {
+
+                // Course-based quizzes without batches.
+                $placementQuery->whereHas(
+                    'course',
+                    function ($courseQuery) use ($user) {
+                        if (!$user->isAdmin()) {
+                            $courseQuery->where('owner_id', $user->id);
+                        }
+                    }
+                );
+
+                // Existing batch-based quizzes.
+                $placementQuery->orWhereHas(
+                    'batch.course',
+                    function ($courseQuery) use ($user) {
+                        if (!$user->isAdmin()) {
+                            $courseQuery->where('owner_id', $user->id);
+                        }
+                    }
+                );
+            });
+        }
+    );
+}
+
 
     /**
      * Calculate this student's attempt number for this quiz.
